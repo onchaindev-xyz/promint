@@ -1,0 +1,26 @@
+# 📄 /var/www/promint/Dockerfile.dev
+
+FROM node:20-alpine
+
+# Ajout des paquets nécessaires à la compilation de modules natifs (comme usb)
+RUN apk add --no-cache \
+    bash \
+    make \
+    g++ \
+    python3 \
+    linux-headers \
+    libusb-dev \
+    eudev-dev \
+    udev
+
+WORKDIR /app
+
+COPY package.json yarn.lock ./
+
+RUN yarn install --frozen-lockfile
+
+COPY . .
+
+EXPOSE 3000
+
+CMD ["yarn", "dev"]

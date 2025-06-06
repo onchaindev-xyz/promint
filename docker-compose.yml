@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  promint-dev:
+    container_name: promint-dev
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "127.0.0.1:3004:3000"
+    volumes:
+      - ./src:/app/src
+      - ./.env.local:/app/.env.local
+    env_file:
+      - .env.local
+    environment:
+      - NEXT_PUBLIC_URL=https://pro.specuverse.xyz
+    command: yarn dev
+    restart: always
+    networks:
+      - dev_network
+
+networks:
+  dev_network:
+    driver: bridge

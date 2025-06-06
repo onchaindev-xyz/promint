@@ -10,37 +10,40 @@ export function useAuth() {
     const { isConnected: isWalletConnected, address } = useAccount();
     const { disconnect: disconnectWallet } = useDisconnect();
 
-    // Provider détecté à partir de la session NextAuth
-    const provider: ProviderType =
-        session?.user?.fid ? "farcaster"
-        : session?.user?.address ? "wallet"
-        : null;
-
-    const isWalletAuthenticated =
+    // Signature NextAuth = wallet signé (sinon, signature requise)
+    const isWalletSigned =
         !!address &&
         !!session?.user?.address &&
         address.toLowerCase() === session.user.address.toLowerCase();
 
-    const isFarcasterAuthenticated = !!session?.user?.fid;
+    // Farcaster signé = FID dans la session
+    const isFarcasterSigned = !!session?.user?.fid;
 
-    // Auth globale : au moins un provider authentifié et session active
-    const isAuthenticated = isWalletAuthenticated || isFarcasterAuthenticated;
+    // Auth wallet = connecté wagmi ET signé NextAuth
+    const isWalletAuthenticated = isWalletConnected && isWalletSigned;
 
-    // Statut loading : session NextAuth ou wagmi pas encore prête
+    // Provider actif détecté
+    const provider: ProviderType =
+        isFarcasterSigned ? "farcaster"
+        : isWalletSigned ? "wallet"
+        : null;
+
+    // Statut loading
     const isLoading =
         sessionStatus === "loading" ||
-        (isWalletConnected && !isWalletAuthenticated);
+        (isWalletConnected && !isWalletSigned);
 
-    // Logout centralisé
+    // Logout global
     const logout = async () => {
         if (isWalletConnected) disconnectWallet();
         await signOut({ redirect: false });
     };
 
     return {
-        isAuthenticated,
-        isWalletAuthenticated,
-        isFarcasterAuthenticated,
+        isWalletConnected,    // wagmi pur
+        isWalletSigned,       // NextAuth signature ok
+        isWalletAuthenticated, // connecté ET signé
+        isFarcasterSigned,    // Farcaster NextAuth
         provider,
         user: session?.user ?? {},
         isLoading,

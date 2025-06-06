@@ -1,3 +1,4 @@
+// ✅ Chemin complet : /src/components/layout/WebHeader.tsx
 "use client";
 
 import { useAuth } from "~/hooks/useAuth";
@@ -7,12 +8,12 @@ import SignWalletModal from "../auth/SignWalletModal";
 
 export default function WebHeader() {
     const {
-        isWalletAuthenticated: isWalletSigned,
+        isWalletConnected,
+        isWalletSigned,
+        isWalletAuthenticated,
         user,
-        provider,
     } = useAuth();
 
-    // Adresse actuelle si wallet (sinon undefined)
     const address = user?.address;
 
     return (
@@ -20,27 +21,25 @@ export default function WebHeader() {
             <div className="flex items-center justify-between">
                 <h1 className="text-xl font-bold">Promint — Web</h1>
                 <div className="flex items-center gap-4">
-                    {/* 1. Connexion wagmi SANS signature NextAuth wallet -> modale obligatoire */}
-                    {provider === "wallet" && !isWalletSigned && address && (
+                    {/* 1. Wallet connecté mais non signé : modale obligatoire */}
+                    {isWalletConnected && !isWalletSigned && address && (
                         <SignWalletModal
                             address={address}
-                            onSigned={() => { /* La session NextAuth se recharge automatiquement */ }}
-                            onError={() => { /* Optionnel : feedback */ }}
+                            onSigned={() => {/* La session NextAuth se recharge automatiquement */ }}
+                            onError={() => {/* La modale reste ouverte (feedback dans le composant) */ }}
                         />
                     )}
 
-                    {/* 2. Connexion wagmi AVEC signature NextAuth wallet */}
-                    {isWalletSigned && address && (
+                    {/* 2. Wallet connecté ET signé */}
+                    {isWalletAuthenticated && address && (
                         <>
-                            <span className="text-sm text-gray-700 truncate max-w-[140px]">
-                                {address}
-                            </span>
+                            <span className="text-sm text-gray-700 truncate max-w-[140px]">{address}</span>
                             <LogoutButton mode="web" />
                         </>
                     )}
 
-                    {/* 3. Non connecté (ou signature non valide) */}
-                    {!isWalletSigned && <LoginWallet />}
+                    {/* 3. Non connecté (aucun wallet ou signature NextAuth) */}
+                    {!isWalletConnected && <LoginWallet />}
                 </div>
             </div>
         </header>

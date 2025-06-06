@@ -3,31 +3,34 @@
 import { AuthOptions, getServerSession } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { createAppClient, viemConnector } from "@farcaster/auth-client";
+import { verifyMessage } from "viem";
 
 declare module "next-auth" {
   interface Session {
     user: {
-      fid: number;
+      fid?: number;
+      address?: string;
     };
   }
 }
 
 function getDomainFromUrl(urlString: string | undefined): string {
   if (!urlString) {
-    return 'localhost:3000';
+    return "localhost:3000";
   }
   try {
     const url = new URL(urlString);
     return url.hostname;
   } catch (error) {
-    return 'localhost:3000';
+    return "localhost:3000";
   }
 }
 
 export const authOptions: AuthOptions = {
   providers: [
+    // --- Provider Farcaster ---
     CredentialsProvider({
-      id: "farcaster", // Ne surtout pas changer
+      id: "farcaster",
       name: "Sign in with Farcaster",
       credentials: {
         message: {
@@ -40,14 +43,12 @@ export const authOptions: AuthOptions = {
           type: "text",
           placeholder: "0x0",
         },
-        // PAS de name/pfp ici sinon NextAuth attend ces champs côté client (et 401 garanti)
       },
       async authorize(credentials, req) {
         const csrfToken = req?.body?.csrfToken;
         if (!csrfToken) {
           return null;
         }
-
         if (!credentials?.message || !credentials?.signature) {
           return null;
         }
@@ -56,11 +57,11 @@ export const authOptions: AuthOptions = {
           ethereum: viemConnector(),
         });
 
-        const domain = "pro.specuverse.xyz"; // A MODIFIER AVANT DE PASSER EN PROD !!!
+        const domain = "pro.specuverse.xyz"; // À ADAPTER SI BESOIN
 
         const verifyResponse = await appClient.verifySignInMessage({
-          message: credentials?.message as string,
-          signature: credentials?.signature as `0x${string}`,
+          message: credentials.message as string,
+          signature: credentials.signature as `0x${string}`,
           domain,
           nonce: csrfToken,
         });
@@ -71,18 +72,91 @@ export const authOptions: AuthOptions = {
           return null;
         }
 
+        // Typage explicite du provider
         return {
           id: fid.toString(),
+          fid,
+          __provider: "farcaster" as const,
         };
+      },
+    }),
+    // --- Provider Wallet ---
+    CredentialsProvider({
+      id: "wallet",
+      name: "Sign in with Wallet",
+      credentials: {
+        message: {
+          label: "Message",
+          type: "text",
+          placeholder: "0x0",
+        },
+        signature: {
+          label: "Signature",
+          type: "text",
+          placeholder: "0x0",
+        },
+        address: {
+          label: "Address",
+          type: "text",
+          placeholder: "0x0",
+        },
+      },
+      async authorize(credentials, req) {
+        if (
+          !credentials?.message ||
+          !credentials?.signature ||
+          !credentials?.address
+        ) {
+          return null;
+        }
+
+        try {
+          // Validation EIP-191 (retourne boolean, cf. doc officielle)
+          const valid = await verifyMessage({
+            address: credentials.address as `0x${string}`,
+            message: credentials.message,
+            signature: credentials.signature as `0x${string}`,
+          });
+
+          if (!valid) {
+            return null;
+          }
+
+          // On retourne l'identité et le provider explicite
+          return {
+            id: credentials.address.toLowerCase(),
+            address: credentials.address.toLowerCase(),
+            __provider: "wallet" as const,
+          };
+        } catch (error) {
+          return null;
+        }
       },
     }),
   ],
   callbacks: {
     session: async ({ session, token }) => {
       if (session?.user) {
-        session.user.fid = parseInt(token.sub ?? '');
+        if (token?.__provider === "farcaster" && token.sub) {
+          session.user.fid = parseInt(token.sub, 10);
+          if ("address" in session.user) {
+            delete session.user.address;
+          }
+        }
+        if (token?.__provider === "wallet" && token.sub) {
+          session.user.address = token.sub.toLowerCase();
+          if ("fid" in session.user) {
+            delete session.user.fid;
+          }
+        }
       }
       return session;
+    },
+    jwt: async ({ token, user }) => {
+      if (user && "__provider" in user && (user as any).__provider) {
+        token.__provider = (user as { __provider: "farcaster" | "wallet" }).__provider;
+      }
+      return token;
     },
   },
   cookies: {

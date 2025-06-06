@@ -1,4 +1,5 @@
 // ✅ Chemin complet : /src/components/layout/WebHeader.tsx
+
 "use client";
 
 import { useAuth } from "~/hooks/useAuth";
@@ -11,35 +12,44 @@ export default function WebHeader() {
         isWalletConnected,
         isWalletSigned,
         isWalletAuthenticated,
-        user,
+        address,
     } = useAuth();
 
-    const address = user?.address;
+    // 1. Wallet connecté mais PAS signé → modale obligatoire (on bloque toute l’UI tant que signature non faite)
+    if (isWalletConnected && !isWalletSigned && address) {
+        return (
+            <SignWalletModal
+                address={address}
+                onSigned={() => {/* La session NextAuth va rafraîchir l’état automatiquement */ }}
+                onError={() => {/* La modale reste ouverte, feedback géré dans SignWalletModal */ }}
+            />
+        );
+    }
 
+    // 2. Wallet connecté ET signé → affichage adresse + bouton logout
+    if (isWalletAuthenticated && address) {
+        return (
+            <header className="w-full px-6 py-3 bg-white border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                    <h1 className="text-xl font-bold">Promint — Web</h1>
+                    <div className="flex items-center gap-4">
+                        <span className="text-sm text-gray-700 truncate max-w-[140px]">
+                            {address}
+                        </span>
+                        <LogoutButton mode="web" />
+                    </div>
+                </div>
+            </header>
+        );
+    }
+
+    // 3. Non connecté (ou non signé) → LoginWallet
     return (
         <header className="w-full px-6 py-3 bg-white border-b border-gray-200">
             <div className="flex items-center justify-between">
                 <h1 className="text-xl font-bold">Promint — Web</h1>
                 <div className="flex items-center gap-4">
-                    {/* 1. Wallet connecté mais non signé : modale obligatoire */}
-                    {isWalletConnected && !isWalletSigned && address && (
-                        <SignWalletModal
-                            address={address}
-                            onSigned={() => {/* La session NextAuth se recharge automatiquement */ }}
-                            onError={() => {/* La modale reste ouverte (feedback dans le composant) */ }}
-                        />
-                    )}
-
-                    {/* 2. Wallet connecté ET signé */}
-                    {isWalletAuthenticated && address && (
-                        <>
-                            <span className="text-sm text-gray-700 truncate max-w-[140px]">{address}</span>
-                            <LogoutButton mode="web" />
-                        </>
-                    )}
-
-                    {/* 3. Non connecté (aucun wallet ou signature NextAuth) */}
-                    {!isWalletConnected && <LoginWallet />}
+                    <LoginWallet />
                 </div>
             </div>
         </header>

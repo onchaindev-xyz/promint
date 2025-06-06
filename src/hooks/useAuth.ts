@@ -6,48 +6,52 @@ import { useAccount, useDisconnect } from "wagmi";
 type ProviderType = "wallet" | "farcaster" | null;
 
 export function useAuth() {
+    // Données NextAuth
     const { data: session, status: sessionStatus } = useSession();
+
+    // Données wagmi
     const { isConnected: isWalletConnected, address } = useAccount();
     const { disconnect: disconnectWallet } = useDisconnect();
 
-    // Signature NextAuth = wallet signé (sinon, signature requise)
-    const isWalletSigned =
-        !!address &&
-        !!session?.user?.address &&
-        address.toLowerCase() === session.user.address.toLowerCase();
+    // Adresse du wallet connectée via wagmi
+    // .user.address = adresse signée via NextAuth (signIn "wallet")
+    // .user.fid = id Farcaster connecté
 
-    // Farcaster signé = FID dans la session
+    // Session NextAuth signée côté wallet
+    const isWalletSigned =
+        !!session?.user?.address && !!address &&
+        session.user.address.toLowerCase() === address.toLowerCase();
+
+    // Wallet connecté ET session signée
+    const isWalletAuthenticated = !!isWalletConnected && isWalletSigned;
+
+    // Farcaster connecté (signature côté NextAuth)
     const isFarcasterSigned = !!session?.user?.fid;
 
-    // Auth wallet = connecté wagmi ET signé NextAuth
-    const isWalletAuthenticated = isWalletConnected && isWalletSigned;
-
-    // Provider actif détecté
+    // Provider en cours (priorité wallet si double session)
     const provider: ProviderType =
-        isFarcasterSigned ? "farcaster"
-        : isWalletSigned ? "wallet"
+        isWalletSigned ? "wallet"
+        : isFarcasterSigned ? "farcaster"
         : null;
 
-    // Statut loading
-    const isLoading =
-        sessionStatus === "loading" ||
-        (isWalletConnected && !isWalletSigned);
-
-    // Logout global
+    // Méthode logout centralisée
     const logout = async () => {
         if (isWalletConnected) disconnectWallet();
         await signOut({ redirect: false });
     };
 
+    // On expose TOUT ce qui est utile à l’UI, et rien d’autre
     return {
-        isWalletConnected,    // wagmi pur
-        isWalletSigned,       // NextAuth signature ok
-        isWalletAuthenticated, // connecté ET signé
-        isFarcasterSigned,    // Farcaster NextAuth
-        provider,
-        user: session?.user ?? {},
-        isLoading,
-        logout,
-        sessionStatus,
+        isWalletConnected,         // wagmi connecté
+        isWalletSigned,            // session NextAuth signée wallet
+        isWalletAuthenticated,     // connecté + signé strict
+        isFarcasterSigned,         // session NextAuth signée farcaster
+        address,                   // adresse connectée (wagmi)
+        fid: session?.user?.fid,   // fid Farcaster (si connecté)
+        session: session ?? null,  // brute NextAuth
+        sessionStatus,             // "loading" | "authenticated" | "unauthenticated"
+        disconnectWallet,          // méthode wagmi (pour bouton custom)
+        logout,                    // logout centralisé (déconnecte tout)
+        provider,                  // "wallet" | "farcaster" | null
     } as const;
 }

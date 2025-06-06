@@ -1,34 +1,31 @@
-// /src/components/auth/LoginWallet.tsx
-
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useAccount, useConnect, useDisconnect, useSignMessage, Connector } from "wagmi";
 import { signIn } from "next-auth/react";
 
 // Composant modal pour la signature (affiché si wallet connecté)
 function SignWalletModal({
     address,
-    onSuccess,
+    onSigned,
     onError,
 }: {
     address: string;
-    onSuccess: () => void;
+    onSigned: () => void;
     onError: (message: string) => void;
 }) {
     const [isSigning, setIsSigning] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const { signMessageAsync } = useSignMessage();
 
-    // Message SIWW standard
     const SIWW_DOMAIN = typeof window !== "undefined" ? window.location.host : "pro.specuverse.xyz";
     const SIWW_STATEMENT =
         "Pour sécuriser votre session Promint, veuillez signer ce message afin de prouver que vous contrôlez ce wallet.";
-    const nonce = Math.floor(Math.random() * 1e16).toString();
+    const nonce = useRef(Math.floor(Math.random() * 1e16).toString());
     const siwwMessage = [
         "Sign-In With Wallet",
         `Domain: ${SIWW_DOMAIN}`,
         `Address: ${address}`,
         `Statement: ${SIWW_STATEMENT}`,
-        `Nonce: ${nonce}`,
+        `Nonce: ${nonce.current}`,
         `Issued At: ${new Date().toISOString()}`
     ].join("\n");
 
@@ -37,7 +34,6 @@ function SignWalletModal({
         setError(null);
         try {
             const signature = await signMessageAsync({ message: siwwMessage });
-            // Appel NextAuth signIn("wallet", ...)
             const res = await signIn("wallet", {
                 message: siwwMessage,
                 signature,
@@ -45,7 +41,6 @@ function SignWalletModal({
                 redirect: false,
             });
 
-            // signIn renvoie SignInResponse | undefined
             if (res && typeof res === "object" && "error" in res && res.error) {
                 setError("Erreur d'authentification : " + res.error);
                 onError(res.error);
@@ -53,7 +48,7 @@ function SignWalletModal({
                 return;
             }
 
-            onSuccess();
+            onSigned();
             setIsSigning(false);
         } catch (err) {
             const message =
@@ -92,34 +87,35 @@ export default function LoginWallet() {
     const { connectAsync, connectors, status } = useConnect();
     const { disconnect } = useDisconnect();
 
-    // Gère la modale de signature
+    // Gestion stricte de la signature
     const [showSignModal, setShowSignModal] = useState(false);
+    const [hasSigned, setHasSigned] = useState(false);
     const [connectError, setConnectError] = useState<string | null>(null);
 
-    // Log runtime pour debug (tu peux retirer en prod)
-    // console.log(
-    //     "[LoginWallet] connectors:",
-    //     connectors.map((c) => ({
-    //         id: c.id,
-    //         name: c.name,
-    //         ready: c.ready,
-    //         type: c.type,
-    //         provider: typeof c?.provider !== "undefined" ? "✅" : "❌"
-    //     }))
-    // );
-    // console.log("[LoginWallet] status:", status);
+    // Affichage de la modale dès que connecté, tant que signature non faite
+    useEffect(() => {
+        if (isConnected && address && !hasSigned) {
+            setShowSignModal(true);
+        } else {
+            setShowSignModal(false);
+        }
+    }, [isConnected, address, hasSigned]);
 
-    const walletConnect = connectors.find((c) => c.id === "walletConnect");
-    const metaMask = connectors.find((c) => c.id === "metaMaskSDK");
-    const coinbase = connectors.find((c) => c.id === "coinbaseWalletSDK");
+    // Pour éviter que le bouton soit "bypassé" après déconnexion/reconnexion rapide
+    useEffect(() => {
+        if (!isConnected) {
+            setHasSigned(false);
+            setShowSignModal(false);
+        }
+    }, [isConnected]);
 
-    // Typage strict du connecteur wagmi
+    // Handler typé
     const handleConnect = useCallback(
         async (connector: Connector) => {
             setConnectError(null);
             try {
                 await connectAsync({ connector });
-                setShowSignModal(true); // On affiche la modale dès que connecté
+                // La modale s'ouvre via useEffect
             } catch (err) {
                 const message =
                     typeof err === "object" && err && "message" in err
@@ -131,26 +127,26 @@ export default function LoginWallet() {
         [connectAsync]
     );
 
-    // Si déjà connecté, afficher direct la modale
-    useEffect(() => {
-        if (isConnected && address) {
-            setShowSignModal(true);
-        }
-    }, [isConnected, address]);
-
-    // Gestion succès signature
+    // Callback succès signature
     const handleSignSuccess = useCallback(() => {
+        setHasSigned(true);
         setShowSignModal(false);
-        // Optionnel : reload, feedback, redirection, etc.
     }, []);
 
-    // Gestion erreur signature
+    // Callback erreur signature
     const handleSignError = useCallback((message: string) => {
         setConnectError(message);
-        // Optionnel : disconnect le wallet ?
+        setHasSigned(false);
+        setShowSignModal(true); // on garde la modale tant que pas signé
     }, []);
 
-    if (isConnected && !showSignModal) {
+    // Mapping connectors
+    const walletConnect = connectors.find((c) => c.id === "walletConnect");
+    const metaMask = connectors.find((c) => c.id === "metaMaskSDK");
+    const coinbase = connectors.find((c) => c.id === "coinbaseWalletSDK");
+
+    // Rendu conditionnel
+    if (isConnected && hasSigned) {
         return (
             <div className="text-sm text-green-600">
                 ✅ Wallet connecté <button onClick={() => disconnect()} className="ml-2 underline text-xs">Déconnexion</button>
@@ -201,7 +197,7 @@ export default function LoginWallet() {
             {showSignModal && address && (
                 <SignWalletModal
                     address={address}
-                    onSuccess={handleSignSuccess}
+                    onSigned={handleSignSuccess}
                     onError={handleSignError}
                 />
             )}

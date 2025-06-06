@@ -1,51 +1,21 @@
-// /src/components/auth/LoginWallet.tsx
+// ✅ Chemin complet : /src/components/auth/LoginWallet.tsx
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { useAccount, useConnect, useDisconnect, Connector } from "wagmi";
-import { useSession } from "next-auth/react";
-import SignWalletModal from "./SignWalletModal";
 
 export default function LoginWallet() {
     const { isConnected, address } = useAccount();
     const { connectAsync, connectors, status } = useConnect();
     const { disconnect } = useDisconnect();
-    const { data: session, status: sessionStatus } = useSession();
 
     const [connectError, setConnectError] = useState<string | null>(null);
-    const [showSignModal, setShowSignModal] = useState(false);
 
-    // Critère "session signée" : session.user.address présente et = address connecté
-    const isWalletSigned =
-        !!address &&
-        !!session?.user?.address &&
-        session.user.address.toLowerCase() === address.toLowerCase();
-
-    // Ouvre la modale signature si connecté mais session non signée
-    useEffect(() => {
-        if (
-            isConnected &&
-            address &&
-            (!isWalletSigned || sessionStatus === "unauthenticated")
-        ) {
-            setShowSignModal(true);
-        } else {
-            setShowSignModal(false);
-        }
-    }, [isConnected, address, isWalletSigned, sessionStatus]);
-
-    // Pour éviter le bypass après déconnexion/reconnexion
-    useEffect(() => {
-        if (!isConnected) {
-            setShowSignModal(false);
-        }
-    }, [isConnected]);
-
+    // Handler typé strict
     const handleConnect = useCallback(
         async (connector: Connector) => {
             setConnectError(null);
             try {
                 await connectAsync({ connector });
-                // modale gérée par useEffect
             } catch (err) {
                 const message =
                     typeof err === "object" && err && "message" in err
@@ -57,22 +27,14 @@ export default function LoginWallet() {
         [connectAsync]
     );
 
-    const handleSignSuccess = useCallback(() => {
-        setShowSignModal(false);
-    }, []);
-
-    const handleSignError = useCallback((message: string) => {
-        setConnectError(message);
-        setShowSignModal(true);
-    }, []);
-
     // Mapping connectors
     const walletConnect = connectors.find((c) => c.id === "walletConnect");
     const metaMask = connectors.find((c) => c.id === "metaMaskSDK");
     const coinbase = connectors.find((c) => c.id === "coinbaseWalletSDK");
 
-    // Rendu conditionnel
-    if (isConnected && isWalletSigned) {
+    // Rendu : affiche uniquement les boutons tant que pas isConnected
+    if (isConnected) {
+        // L'état "wallet signé" est affiché et géré par le layout parent (WebHeader)
         return (
             <div className="text-sm text-green-600">
                 ✅ Wallet connecté ({address}){" "}
@@ -125,14 +87,6 @@ export default function LoginWallet() {
             )}
 
             {connectError && <div className="text-red-600 text-sm">{connectError}</div>}
-
-            {showSignModal && address && (
-                <SignWalletModal
-                    address={address}
-                    onSigned={handleSignSuccess}
-                    onError={handleSignError}
-                />
-            )}
         </div>
     );
 }

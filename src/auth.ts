@@ -1,4 +1,4 @@
-// /src/auth.ts
+// ✅ Chemin complet : /src/auth.ts
 
 import { AuthOptions, getServerSession } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
@@ -33,29 +33,15 @@ export const authOptions: AuthOptions = {
       id: "farcaster",
       name: "Sign in with Farcaster",
       credentials: {
-        message: {
-          label: "Message",
-          type: "text",
-          placeholder: "0x0",
-        },
-        signature: {
-          label: "Signature",
-          type: "text",
-          placeholder: "0x0",
-        },
+        message: { label: "Message", type: "text", placeholder: "0x0" },
+        signature: { label: "Signature", type: "text", placeholder: "0x0" },
       },
       async authorize(credentials, req) {
         const csrfToken = req?.body?.csrfToken;
-        if (!csrfToken) {
-          return null;
-        }
-        if (!credentials?.message || !credentials?.signature) {
-          return null;
-        }
+        if (!csrfToken) return null;
+        if (!credentials?.message || !credentials?.signature) return null;
 
-        const appClient = createAppClient({
-          ethereum: viemConnector(),
-        });
+        const appClient = createAppClient({ ethereum: viemConnector() });
 
         const domain = "pro.specuverse.xyz"; // À ADAPTER SI BESOIN
 
@@ -67,12 +53,8 @@ export const authOptions: AuthOptions = {
         });
 
         const { success, fid } = verifyResponse;
+        if (!success) return null;
 
-        if (!success) {
-          return null;
-        }
-
-        // Typage explicite du provider
         return {
           id: fid.toString(),
           fid,
@@ -85,33 +67,28 @@ export const authOptions: AuthOptions = {
       id: "wallet",
       name: "Sign in with Wallet",
       credentials: {
-        message: {
-          label: "Message",
-          type: "text",
-          placeholder: "0x0",
-        },
-        signature: {
-          label: "Signature",
-          type: "text",
-          placeholder: "0x0",
-        },
-        address: {
-          label: "Address",
-          type: "text",
-          placeholder: "0x0",
-        },
+        message: { label: "Message", type: "text", placeholder: "0x0" },
+        signature: { label: "Signature", type: "text", placeholder: "0x0" },
+        address: { label: "Address", type: "text", placeholder: "0x0" },
       },
       async authorize(credentials, req) {
-        if (
-          !credentials?.message ||
-          !credentials?.signature ||
-          !credentials?.address
-        ) {
+        const csrfToken = req?.body?.csrfToken;
+        if (!credentials?.message || !credentials?.signature || !credentials?.address) {
+          return null;
+        }
+        if (!csrfToken) return null;
+
+        // Vérification stricte du nonce dans le message SIWW
+        // Le message doit contenir "Nonce: <csrfToken>"
+        const nonceRegex = /^Nonce: (.+)$/m;
+        const match = credentials.message.match(nonceRegex);
+        if (!match || match[1] !== csrfToken) {
+          // Nonce absent ou mismatch => rejet immédiat
           return null;
         }
 
         try {
-          // Validation EIP-191 (retourne boolean, cf. doc officielle)
+          // Validation cryptographique signature (cf. viem doc)
           const valid = await verifyMessage({
             address: credentials.address as `0x${string}`,
             message: credentials.message,
@@ -122,7 +99,7 @@ export const authOptions: AuthOptions = {
             return null;
           }
 
-          // On retourne l'identité et le provider explicite
+          // Identité validée, on retourne l'adresse comme user
           return {
             id: credentials.address.toLowerCase(),
             address: credentials.address.toLowerCase(),
@@ -139,15 +116,11 @@ export const authOptions: AuthOptions = {
       if (session?.user) {
         if (token?.__provider === "farcaster" && token.sub) {
           session.user.fid = parseInt(token.sub, 10);
-          if ("address" in session.user) {
-            delete session.user.address;
-          }
+          if ("address" in session.user) delete session.user.address;
         }
         if (token?.__provider === "wallet" && token.sub) {
           session.user.address = token.sub.toLowerCase();
-          if ("fid" in session.user) {
-            delete session.user.fid;
-          }
+          if ("fid" in session.user) delete session.user.fid;
         }
       }
       return session;

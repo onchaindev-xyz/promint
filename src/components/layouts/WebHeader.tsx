@@ -1,43 +1,19 @@
-// /src/components/layout/WebHeader.tsx
 "use client";
 
-import { useAccount } from "wagmi";
-import { useSession } from "next-auth/react";
+import { useAuth } from "~/hooks/useAuth";
 import LoginWallet from "../auth/LoginWallet";
 import LogoutButton from "../auth/LogoutButton";
 import SignWalletModal from "../auth/SignWalletModal";
-import { useState, useCallback, useEffect } from "react";
 
 export default function WebHeader() {
-    const { isConnected, address } = useAccount();
-    const { data: session } = useSession();
-    // Pour affichage/masquage manuel de la modale sur signature réussie
-    const [showSignModal, setShowSignModal] = useState(false);
+    const {
+        isWalletAuthenticated: isWalletSigned,
+        user,
+        provider,
+    } = useAuth();
 
-    // Critère : signature validée uniquement si session NextAuth contient bien .user.address == address
-    const isWalletSigned =
-        !!address &&
-        !!session?.user?.address &&
-        session.user.address.toLowerCase() === address.toLowerCase();
-
-    // Affichage/masquage automatique de la modale selon l'état
-    useEffect(() => {
-        if (isConnected && address && !isWalletSigned) {
-            setShowSignModal(true);
-        } else {
-            setShowSignModal(false);
-        }
-    }, [isConnected, address, isWalletSigned]);
-
-    // Callback succès = masquage modale (refresh UI automatique via NextAuth)
-    const handleSignSuccess = useCallback(() => {
-        setShowSignModal(false);
-    }, []);
-
-    // Callback erreur = la modale reste ouverte (pas de fermeture possible)
-    const handleSignError = useCallback(() => {
-        setShowSignModal(true);
-    }, []);
+    // Adresse actuelle si wallet (sinon undefined)
+    const address = user?.address;
 
     return (
         <header className="w-full px-6 py-3 bg-white border-b border-gray-200">
@@ -45,16 +21,16 @@ export default function WebHeader() {
                 <h1 className="text-xl font-bold">Promint — Web</h1>
                 <div className="flex items-center gap-4">
                     {/* 1. Connexion wagmi SANS signature NextAuth wallet -> modale obligatoire */}
-                    {isConnected && address && !isWalletSigned && showSignModal && (
+                    {provider === "wallet" && !isWalletSigned && address && (
                         <SignWalletModal
                             address={address}
-                            onSigned={handleSignSuccess}
-                            onError={handleSignError}
+                            onSigned={() => { /* La session NextAuth se recharge automatiquement */ }}
+                            onError={() => { /* Optionnel : feedback */ }}
                         />
                     )}
 
                     {/* 2. Connexion wagmi AVEC signature NextAuth wallet */}
-                    {isConnected && isWalletSigned && (
+                    {isWalletSigned && address && (
                         <>
                             <span className="text-sm text-gray-700 truncate max-w-[140px]">
                                 {address}
@@ -64,7 +40,7 @@ export default function WebHeader() {
                     )}
 
                     {/* 3. Non connecté (ou signature non valide) */}
-                    {!isConnected && <LoginWallet />}
+                    {!isWalletSigned && <LoginWallet />}
                 </div>
             </div>
         </header>
